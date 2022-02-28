@@ -23,3 +23,5 @@ jobs:
 #        run: dotnet tool install gpr -g
       - name: Publish the package to GPR
         run: dotnet nuget push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols -k ${{secrets.GITHUB_TOKEN}}
+      - name: list sources
+        run: dotnet nuget list source
