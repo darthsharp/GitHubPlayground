@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	  <RepositoryUrl>https://github.com/darthsharp/GitHubPlayground</RepositoryUrl>
+	  <PackageVersion>2.0</PackageVersion>
   </PropertyGroup>
 
 </Project>
