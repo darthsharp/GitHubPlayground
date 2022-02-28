@@ -21,3 +21,5 @@ jobs:
         run: dotnet pack --configuration Release sources/TestSolution.sln
       - name: Publish the package to GPR
         run: dotnet nuget push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols true -k ${{NUGET_AUTH_TOKEN}}
+        env:
+          NUGET_AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
