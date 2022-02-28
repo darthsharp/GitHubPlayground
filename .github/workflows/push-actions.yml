@@ -22,6 +22,6 @@ jobs:
       - name: install gpr
         run: dotnet tool install gpr -g
       - name: Publish the package to GPR
-        run: gpr push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols true -k ${{secrets.GITHUB_TOKEN}}
+        run: gpr push sources/DemoClassLibrary/**/*.nupkg -k ${{secrets.GITHUB_TOKEN}}
         env:
           AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
