@@ -4,7 +4,7 @@ on: [push]
 
 jobs:
   deploy:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     permissions:
       packages: write
       contents: read
@@ -19,7 +19,9 @@ jobs:
       - run: dotnet build --configuration Release sources/TestSolution.sln
       - name: Create the package
         run: dotnet pack --configuration Release sources/TestSolution.sln
+      - name: install gpr
+        run: dotnet tool install gpr -g
       - name: Publish the package to GPR
-        run: dotnet nuget push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols true -k ${{secrets.GITHUB_TOKEN}}
+        run: gpr push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols true -k ${{secrets.GITHUB_TOKEN}}
         env:
           AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
