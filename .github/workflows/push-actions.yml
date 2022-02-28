@@ -19,9 +19,7 @@ jobs:
       - run: dotnet build --configuration Release sources/TestSolution.sln
       - name: Create the package
         run: dotnet pack --configuration Release sources/TestSolution.sln
-      - name: install gpr
-        run: dotnet tool install gpr -g
+#      - name: install gpr
+#        run: dotnet tool install gpr -g
       - name: Publish the package to GPR
-        run: dotnet nuget push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols true -k ${{secrets.GITHUB_TOKEN}}
-        env:
-          AUTH_TOKEN: ${{secrets.GITHUB_TOKEN}}
+        run: dotnet nuget push sources/DemoClassLibrary/**/*.nupkg --skip-duplicate --no-symbols -k ${{secrets.GITHUB_TOKEN}}
