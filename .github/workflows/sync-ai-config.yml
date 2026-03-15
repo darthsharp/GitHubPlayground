@@ -13,8 +13,6 @@ on:
         required: false
         type: string
         default: 'feature/jstooltodotnet'
-#  schedule:
-#    - cron: '0 0 * * 0'  # Weekly on Sundays
 
 jobs:
   sync:
@@ -22,5 +20,5 @@ jobs:
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
-      ai-base-version: ${{ github.event.inputs.ai-base-version }}
-      create-pull-request: ${{ github.event.inputs.create-pull-request }}
+      ai-base-version: ${{ inputs.ai-base-version }}
+      create-pull-request: ${{ inputs.create-pull-request }}
