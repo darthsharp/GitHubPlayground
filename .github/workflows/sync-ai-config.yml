@@ -7,7 +7,7 @@ on:
 
 jobs:
   sync:
-    uses: https://github.com/CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
+    uses: CreativeCodersTeam/ai-base/sync-ai-config.yml@main
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
