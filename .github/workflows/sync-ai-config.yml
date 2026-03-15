@@ -12,23 +12,23 @@ on:
         description: 'Version/branch of ai-base to use'
         required: false
         type: string
-        default: 'feature/jstooltodotnet'
+        default: 'main'
   schedule:
     - cron: '0 0 * * *'
 
 jobs:
   sync-scheduled:
     if: github.event_name == 'schedule'
-    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@feature/jstooltodotnet
+    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
-      ai-base-version: 'feature/jstooltodotnet'
+      ai-base-version: 'main'
       create-pull-request: true
 
   sync-manual:
     if: github.event_name == 'workflow_dispatch'
-    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@feature/jstooltodotnet
+    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
