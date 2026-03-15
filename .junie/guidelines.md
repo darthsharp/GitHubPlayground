@@ -156,6 +156,11 @@ applyTo: '**/*.cs'
 -----------------------------------------------------------
 
 
+---
+description: 'Guidelines for building applications with Typescript'
+applyTo: '**/*.ts'
+---
+
 # TypeScript Specific Instructions
 
 **Scope: TypeScript Projects**
