@@ -7,7 +7,7 @@ on:
 
 jobs:
   sync:
-    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
+    uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@feature/jstooltodotnet
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
