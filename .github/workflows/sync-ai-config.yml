@@ -2,8 +2,19 @@ name: Sync AI Configuration
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * 0'  # Weekly on Sundays
+    inputs:
+      create-pull-request:
+        description: 'Create a pull request instead of committing directly to the branch'
+        required: false
+        type: boolean
+        default: true
+      ai-base-version:
+        description: 'Version/branch of ai-base to use'
+        required: false
+        type: string
+        default: 'feature/jstooltodotnet'
+#  schedule:
+#    - cron: '0 0 * * 0'  # Weekly on Sundays
 
 jobs:
   sync:
@@ -11,4 +22,5 @@ jobs:
     with:
       languages: 'csharp,typescript'
       ai-systems: 'copilot,claude,junie'
-      ai-base-version: 'feature/jstooltodotnet'
+      ai-base-version: ${{ github.event.inputs.ai-base-version }}
+      create-pull-request: ${{ github.event.inputs.create-pull-request }}
