@@ -1,0 +1,14 @@
+name: Sync AI Configuration
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sundays
+
+jobs:
+  sync:
+    uses: https://github.com/CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
+    with:
+      languages: 'csharp,typescript'
+      ai-systems: 'copilot,claude,junie'
+      ai-base-version: 'feature/jstooltodotnet'
