@@ -26,8 +26,8 @@ jobs:
     if: github.event_name == 'schedule'
     uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
     with:
-      languages: 'csharp,typescript'
-      ai-systems: 'copilot,claude,junie'
+      languages: 'csharp'
+      ai-systems: 'claude'
       ai-base-version: 'main'
       create-pull-request: true
 
@@ -35,8 +35,8 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     uses: CreativeCodersTeam/ai-base/.github/workflows/sync-ai-config.yml@main
     with:
-      languages: 'csharp,typescript'
-      ai-systems: 'copilot,claude,junie'
+      languages: 'csharp'
+      ai-systems: 'claude'
       ai-base-version: ${{ inputs.ai-base-version }}
       create-pull-request: ${{ inputs.create-pull-request }}
       clear-ai-configs: ${{ inputs.clear-ai-configs }}
