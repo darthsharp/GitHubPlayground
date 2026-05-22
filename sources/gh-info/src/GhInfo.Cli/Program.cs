@@ -31,6 +31,10 @@ await using var scope = host.Services.CreateAsyncScope();
 var dbContext = scope.ServiceProvider.GetRequiredService<CacheDbContext>();
 await dbContext.Database.EnsureCreatedAsync();
 
+// Keep the cache file from growing unbounded by dropping expired entries on each run.
+var cache = scope.ServiceProvider.GetRequiredService<IUserCacheService>();
+await cache.PruneExpiredAsync();
+
 try
 {
     var app = new CommandApp<UserInfoCommand>(new TypeRegistrar(scope.ServiceProvider));

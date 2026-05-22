@@ -23,4 +23,11 @@ public interface IUserCacheService
     /// <param name="user">The user profile to cache.</param>
     /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
     Task SetAsync(GitHubUser user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Removes all cache entries whose age exceeds the configured expiration window.
+    /// </summary>
+    /// <param name="cancellationToken">A token to observe while waiting for the operation to complete.</param>
+    /// <returns>The number of expired entries that were removed.</returns>
+    Task<int> PruneExpiredAsync(CancellationToken cancellationToken = default);
 }

@@ -163,4 +163,58 @@ public class UserCacheServiceTests
         result.Should().NotBeNull();
         result!.Login.Should().Be("OctoCat");
     }
+
+    [Fact]
+    public async Task SetAsync_WhenLoginCasingDiffers_DoesNotCreateDuplicate()
+    {
+        // Arrange
+        using var fixture = new SqliteCacheFixture();
+        var sut = CreateSut(fixture.Context, new TestTimeProvider(Now));
+
+        // Act
+        await sut.SetAsync(CreateUser("OctoCat"));
+        await sut.SetAsync(CreateUser("octocat"));
+
+        // Assert
+        var count = await fixture.Context.Users.CountAsync();
+        count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task PruneExpiredAsync_RemovesOnlyExpiredEntries()
+    {
+        // Arrange
+        using var fixture = new SqliteCacheFixture();
+        var clock = new TestTimeProvider(Now);
+        var sut = CreateSut(fixture.Context, clock, TimeSpan.FromMinutes(15));
+        await sut.SetAsync(CreateUser("alpha"));
+        clock.Advance(TimeSpan.FromMinutes(10));
+        await sut.SetAsync(CreateUser("beta"));
+
+        // Act
+        clock.Advance(TimeSpan.FromMinutes(6)); // alpha age 16 (expired), beta age 6 (fresh)
+        var removed = await sut.PruneExpiredAsync();
+
+        // Assert
+        removed.Should().Be(1);
+        var remaining = await fixture.Context.Users.Select(x => x.Login).ToListAsync();
+        remaining.Should().ContainSingle().Which.Should().Be("beta");
+    }
+
+    [Fact]
+    public async Task PruneExpiredAsync_WhenNothingExpired_ReturnsZero()
+    {
+        // Arrange
+        using var fixture = new SqliteCacheFixture();
+        var clock = new TestTimeProvider(Now);
+        var sut = CreateSut(fixture.Context, clock, TimeSpan.FromMinutes(15));
+        await sut.SetAsync(CreateUser());
+
+        // Act
+        clock.Advance(TimeSpan.FromMinutes(5));
+        var removed = await sut.PruneExpiredAsync();
+
+        // Assert
+        removed.Should().Be(0);
+    }
 }

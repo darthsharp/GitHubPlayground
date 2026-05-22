@@ -5,6 +5,7 @@
     <AssemblyName>gh-info</AssemblyName>
     <RootNamespace>GhInfo.Cli</RootNamespace>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <UserSecretsId>gh-info-cli</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

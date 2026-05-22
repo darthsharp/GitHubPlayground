@@ -34,7 +34,7 @@ internal sealed class UserInfoCommand(
 
         /// <summary>Gets a value indicating whether the local cache should be bypassed.</summary>
         [CommandOption("--no-cache")]
-        [Description("Bypass the local cache and fetch a fresh copy from the GitHub API.")]
+        [Description("Skip reading from the cache and fetch a fresh copy from the API (the cache is still refreshed).")]
         public bool NoCache { get; init; }
     }
 

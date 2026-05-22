@@ -18,7 +18,12 @@ the cache or the GitHub API.
 - **Typed HTTP client** (`IGitHubUsersClient`) calls `GET https://api.github.com/users/{login}`.
 - Results are cached in a local **SQLite** database (`gh-info-cache.db`, EF Core). A second lookup
   within the configured expiration window (15 minutes by default) is served from the cache.
-- `--no-cache` forces a fresh API call; the cache is still refreshed with the new result.
+- `--no-cache` skips *reading* from the cache and forces a fresh API call; the result is still
+  written back to the cache (a refresh, not a full bypass).
+- Expired entries are pruned from the database on every run, so the cache file does not grow
+  unbounded.
+- The typed client uses a **standard resilience pipeline** (retry with backoff, circuit breaker and
+  timeout via `Microsoft.Extensions.Http.Resilience`) for transient API failures.
 - Bootstrapped with the **Generic Host** + dependency injection; structured logging via **Serilog**
   (console sink, written to `stderr` so it never pollutes the table on `stdout`).
 
@@ -34,8 +39,15 @@ the cache or the GitHub API.
 | `Cache` | `DatabasePath` | `gh-info-cache.db` | SQLite file path |
 | `Serilog` | `MinimumLevel` | `Information` | log level |
 
-> Provide the access token via an environment variable (`GitHub__AccessToken`) rather than checking
-> it into `appsettings.json`.
+> Provide the access token via an environment variable (`GitHub__AccessToken`) or
+> [User Secrets](https://learn.microsoft.com/aspnet/core/security/app-secrets) (loaded automatically
+> in the Development environment) rather than checking it into `appsettings.json`:
+>
+> ```bash
+> export GitHub__AccessToken=ghp_xxx
+> # or, for local development:
+> dotnet user-secrets set "GitHub:AccessToken" "ghp_xxx" --project src/GhInfo.Cli
+> ```
 
 ## Projects
 

@@ -25,11 +25,11 @@ internal sealed class UserCacheService(
     {
         Ensure.IsNotNullOrWhitespace(login);
 
-        var normalized = login.ToLowerInvariant();
-
+        // The Login column uses a NOCASE collation, so this exact comparison matches case-insensitively
+        // and is served by the primary-key index.
         var entry = await _dbContext.Users
             .AsNoTracking()
-            .FirstOrDefaultAsync(x => x.Login.ToLower() == normalized, cancellationToken)
+            .FirstOrDefaultAsync(x => x.Login == login, cancellationToken)
             .ConfigureAwait(false);
 
         if (entry is null)
@@ -81,6 +81,38 @@ internal sealed class UserCacheService(
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
         _logger.LogDebug("Cached user {Login}", user.Login);
+    }
+
+    /// <inheritdoc />
+    public async Task<int> PruneExpiredAsync(CancellationToken cancellationToken = default)
+    {
+        var cutoff = _timeProvider.GetUtcNow() - _options.Expiration;
+
+        // SQLite cannot translate a DateTimeOffset comparison inside a bulk delete, so the age check
+        // is evaluated client-side (as in GetAsync) and expired rows are then deleted by their key.
+        var allEntries = await _dbContext.Users
+            .AsNoTracking()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var expiredLogins = allEntries
+            .Where(x => x.FetchedAt < cutoff)
+            .Select(x => x.Login)
+            .ToList();
+
+        if (expiredLogins.Count == 0)
+        {
+            return 0;
+        }
+
+        var removed = await _dbContext.Users
+            .Where(x => expiredLogins.Contains(x.Login))
+            .ExecuteDeleteAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        _logger.LogInformation("Pruned {Count} expired cache entries", removed);
+
+        return removed;
     }
 
     private static GitHubUser ToModel(CachedUser entry)

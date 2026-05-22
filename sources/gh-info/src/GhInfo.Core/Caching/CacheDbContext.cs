@@ -19,7 +19,10 @@ public sealed class CacheDbContext(DbContextOptions<CacheDbContext> options) : D
         var user = modelBuilder.Entity<CachedUser>();
         user.ToTable("CachedUsers");
         user.HasKey(x => x.Login);
-        user.Property(x => x.Login).IsRequired();
+
+        // Case-insensitive primary key so lookups match GitHub's case-insensitive logins while
+        // still using the key's index (no lower(...) scan, no duplicate rows per casing).
+        user.Property(x => x.Login).IsRequired().UseCollation("NOCASE");
         user.Property(x => x.FetchedAt).IsRequired();
     }
 }

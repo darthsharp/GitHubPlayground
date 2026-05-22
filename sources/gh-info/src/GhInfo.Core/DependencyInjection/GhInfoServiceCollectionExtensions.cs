@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Http.Resilience;
 using Microsoft.Extensions.Options;
 
 namespace GhInfo.Core.DependencyInjection;
@@ -51,7 +52,8 @@ public static class GhInfoServiceCollectionExtensions
                     client.DefaultRequestHeaders.Authorization =
                         new AuthenticationHeaderValue("Bearer", options.AccessToken);
                 }
-            });
+            })
+            .AddStandardResilienceHandler();
 
         services.AddDbContext<CacheDbContext>((sp, builder) =>
         {
