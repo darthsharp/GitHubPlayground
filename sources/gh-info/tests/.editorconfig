@@ -1,0 +1,4 @@
+[*.cs]
+# Tests intentionally do not use ConfigureAwait(false); XML docs not required on test code.
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.CA2007.severity = none

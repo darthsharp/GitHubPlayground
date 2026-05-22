@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/GhInfo.Cli/GhInfo.Cli.csproj" />
+    <Project Path="src/GhInfo.Core/GhInfo.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GhInfo.Core.Tests/GhInfo.Core.Tests.csproj" />
+  </Folder>
+</Solution>

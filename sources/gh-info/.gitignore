@@ -1,0 +1,4 @@
+# Runtime SQLite cache
+*.db
+*.db-shm
+*.db-wal
