@@ -53,6 +53,13 @@ public sealed class UserInfoCommand(
 
             return 2;
         }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "Network failure calling GitHub");
+            _console.MarkupLine($"[red]Network error: {Markup.Escape(ex.Message)}[/]");
+
+            return 3;
+        }
     }
 
     /// <summary>
@@ -71,7 +78,7 @@ public sealed class UserInfoCommand(
         /// Gets a value indicating whether the local cache should be bypassed.
         /// </summary>
         [CommandOption("--no-cache")]
-        [Description("Bypass the local cache and always call the GitHub API.")]
+        [Description("Skip the local cache read and always call the GitHub API (the fresh response is still written back to the cache).")]
         [DefaultValue(false)]
         public bool NoCache { get; init; }
     }

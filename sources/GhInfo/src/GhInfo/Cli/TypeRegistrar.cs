@@ -9,10 +9,20 @@ namespace GhInfo.Cli;
 /// <see cref="IServiceProvider"/> from the Generic Host.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Spectre's <c>CommandApp</c> registers a few additional types at configuration time
 /// (e.g. command implementations and remaining-args). They are kept in a small
 /// supplemental container; resolution falls back to the host's <see cref="IServiceProvider"/>
-/// for everything else.
+/// only when the host has no registration for the requested type.
+/// </para>
+/// <para>
+/// <b>Constraint for contributors:</b> the supplemental container is built from a plain
+/// <see cref="ServiceCollection"/> and therefore knows nothing about host-registered
+/// services. Every command (and every dependency it constructor-injects) MUST be
+/// registered in the host's <see cref="IServiceCollection"/> in <c>Program.cs</c>.
+/// Adding a new Spectre sub-command without an explicit host registration will fail at
+/// resolution time because the supplemental container cannot satisfy the constructor.
+/// </para>
 /// </remarks>
 internal sealed class TypeRegistrar(IServiceProvider hostProvider) : ITypeRegistrar
 {

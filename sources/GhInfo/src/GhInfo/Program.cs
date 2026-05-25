@@ -2,6 +2,7 @@ using GhInfo;
 using GhInfo.Caching;
 using GhInfo.Cli;
 using GhInfo.GitHub;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -50,8 +51,8 @@ builder.Services
         http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
     });
 
-var cachePath = ResolveCachePath();
-builder.Services.AddDbContext<CacheDbContext>(opt => opt.UseSqlite($"Data Source={cachePath}"));
+var cacheConnectionString = new SqliteConnectionStringBuilder { DataSource = ResolveCachePath() }.ToString();
+builder.Services.AddDbContext<CacheDbContext>(opt => opt.UseSqlite(cacheConnectionString));
 
 builder.Services.AddScoped<IUserCacheService, UserCacheService>();
 builder.Services.AddScoped<GhInfoService>();
