@@ -7,15 +7,11 @@ namespace GhInfo.Cli;
 /// <summary>
 /// Renders a <see cref="GitHubUser"/> as a colored Spectre.Console table.
 /// </summary>
-public sealed class UserTableRenderer(IAnsiConsole console)
+public sealed class UserTableRenderer(IAnsiConsole console) : IUserTableRenderer
 {
     private readonly IAnsiConsole _console = Ensure.NotNull(console);
 
-    /// <summary>
-    /// Writes a table describing <paramref name="user"/> to the underlying console.
-    /// </summary>
-    /// <param name="user">The user to render.</param>
-    /// <param name="fromCache">When <see langword="true"/>, marks the output as a cache hit.</param>
+    /// <inheritdoc/>
     public void Render(GitHubUser user, bool fromCache)
     {
         Ensure.NotNull(user);

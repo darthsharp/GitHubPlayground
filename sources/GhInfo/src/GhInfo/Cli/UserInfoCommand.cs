@@ -10,14 +10,14 @@ namespace GhInfo.Cli;
 /// <summary>
 /// Spectre.Console.Cli command that resolves a single GitHub user and renders the result.
 /// </summary>
-public sealed class UserInfoCommand(
-    GhInfoService service,
-    UserTableRenderer renderer,
+public class UserInfoCommand(
+    IGhInfoService service,
+    IUserTableRenderer renderer,
     IAnsiConsole console,
     ILogger<UserInfoCommand> logger) : AsyncCommand<UserInfoCommand.Settings>
 {
-    private readonly GhInfoService _service = Ensure.NotNull(service);
-    private readonly UserTableRenderer _renderer = Ensure.NotNull(renderer);
+    private readonly IGhInfoService _service = Ensure.NotNull(service);
+    private readonly IUserTableRenderer _renderer = Ensure.NotNull(renderer);
     private readonly IAnsiConsole _console = Ensure.NotNull(console);
     private readonly ILogger<UserInfoCommand> _logger = Ensure.NotNull(logger);
 

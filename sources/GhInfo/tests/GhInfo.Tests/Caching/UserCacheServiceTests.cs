@@ -1,5 +1,4 @@
 using AwesomeAssertions;
-using FakeItEasy;
 using GhInfo.Caching;
 using GhInfo.GitHub;
 using Microsoft.Data.Sqlite;

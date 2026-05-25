@@ -1,6 +1,5 @@
 using AwesomeAssertions;
 using FakeItEasy;
-using GhInfo;
 using GhInfo.Caching;
 using GhInfo.GitHub;
 using GhInfo.Tests.Fakes;

@@ -55,8 +55,8 @@ var cacheConnectionString = new SqliteConnectionStringBuilder { DataSource = Res
 builder.Services.AddDbContext<CacheDbContext>(opt => opt.UseSqlite(cacheConnectionString));
 
 builder.Services.AddScoped<IUserCacheService, UserCacheService>();
-builder.Services.AddScoped<GhInfoService>();
-builder.Services.AddScoped<UserTableRenderer>();
+builder.Services.AddScoped<IGhInfoService, GhInfoService>();
+builder.Services.AddScoped<IUserTableRenderer, UserTableRenderer>();
 builder.Services.AddScoped<UserInfoCommand>();
 
 using var host = builder.Build();
