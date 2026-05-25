@@ -1,0 +1,5 @@
+root = false
+
+# Tests don't require ConfigureAwait(false)
+[*.cs]
+dotnet_diagnostic.CA2007.severity = none
