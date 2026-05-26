@@ -1,3 +1,4 @@
+using System.Globalization;
 using CreativeCoders.Core;
 using GhInfo.GitHub;
 using Spectre.Console;
@@ -5,34 +6,31 @@ using Spectre.Console;
 namespace GhInfo.Cli;
 
 /// <summary>
-/// Renders a <see cref="GitHubUser"/> as a colored Spectre.Console table.
+/// Default <see cref="IUserTableRenderer"/> implementation that writes a
+/// two-column key/value table to the injected <see cref="IAnsiConsole"/>.
 /// </summary>
 public sealed class UserTableRenderer(IAnsiConsole console) : IUserTableRenderer
 {
     private readonly IAnsiConsole _console = Ensure.NotNull(console);
 
-    /// <inheritdoc/>
-    public void Render(GitHubUser user, bool fromCache)
+    /// <inheritdoc />
+    public void Render(GitHubUser user)
     {
         Ensure.NotNull(user);
-
-        var source = fromCache
-            ? "[yellow]cache[/]"
-            : "[green]api[/]";
 
         var table = new Table()
             .Border(TableBorder.Rounded)
             .BorderColor(Color.Grey)
-            .Title($"[bold aqua]GitHub user[/] [bold white]{Markup.Escape(user.Login)}[/]  ({source})")
-            .AddColumn(new TableColumn("[bold]Field[/]"))
+            .Title($"[bold yellow]GitHub user[/] [bold cyan]{Markup.Escape(user.Login)}[/]")
+            .AddColumn(new TableColumn("[bold]Field[/]").NoWrap())
             .AddColumn(new TableColumn("[bold]Value[/]"));
 
-        table.AddRow("[grey]Login[/]", $"[bold white]{Markup.Escape(user.Login)}[/]");
-        table.AddRow("[grey]Name[/]", FormatOptional(user.Name));
-        table.AddRow("[grey]Bio[/]", FormatOptional(user.Bio));
-        table.AddRow("[grey]Public repos[/]", $"[green]{user.PublicRepos}[/]");
-        table.AddRow("[grey]Followers[/]", $"[cyan]{user.Followers}[/]");
-        table.AddRow("[grey]Created at[/]", $"[magenta]{user.CreatedAt:yyyy-MM-dd HH:mm:ss zzz}[/]");
+        table.AddRow("[green]Login[/]", Markup.Escape(user.Login));
+        table.AddRow("[green]Name[/]", FormatOptional(user.Name));
+        table.AddRow("[green]Bio[/]", FormatOptional(user.Bio));
+        table.AddRow("[green]Public repos[/]", user.PublicRepos.ToString(CultureInfo.InvariantCulture));
+        table.AddRow("[green]Followers[/]", user.Followers.ToString(CultureInfo.InvariantCulture));
+        table.AddRow("[green]Created at[/]", user.CreatedAt.ToString("u", CultureInfo.InvariantCulture));
 
         _console.Write(table);
     }
@@ -40,7 +38,7 @@ public sealed class UserTableRenderer(IAnsiConsole console) : IUserTableRenderer
     private static string FormatOptional(string? value)
     {
         return string.IsNullOrWhiteSpace(value)
-            ? "[grey italic](none)[/]"
+            ? "[grey](not set)[/]"
             : Markup.Escape(value);
     }
 }

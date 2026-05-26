@@ -10,113 +10,110 @@ namespace GhInfo.Tests;
 public sealed class GhInfoServiceTests
 {
     [Fact]
-    public async Task GetUserAsync_WithCacheHit_ReturnsCachedAndDoesNotCallApi()
+    public async Task GetUserAsync_WhenCacheHit_ReturnsCachedAndSkipsApi()
     {
         // Arrange
-        var fakeClient = new FakeGitHubUsersClient();
         var cache = A.Fake<IUserCacheService>();
-        var cached = MakeUser("octocat");
-        A.CallTo(() => cache.TryGetAsync("octocat", A<CancellationToken>._))
-            .Returns(Task.FromResult<GitHubUser?>(cached));
-        var sut = new GhInfoService(fakeClient, cache, NullLogger<GhInfoService>.Instance);
+        var cachedUser = CreateUser("octocat");
+        A.CallTo(() => cache.GetAsync("octocat", A<CancellationToken>._)).Returns(cachedUser);
+
+        var apiClient = new FakeGitHubUsersClient();
+        var sut = new GhInfoService(apiClient, cache, NullLogger<GhInfoService>.Instance);
 
         // Act
         var result = await sut.GetUserAsync("octocat", useCache: true);
 
         // Assert
-        result.User.Should().BeSameAs(cached);
-        result.FromCache.Should().BeTrue();
-        fakeClient.CallCount.Should().Be(0);
-        A.CallTo(() => cache.SetAsync(A<GitHubUser>._, A<CancellationToken>._)).MustNotHaveHappened();
+        result.Should().BeSameAs(cachedUser);
+        apiClient.GetUserCallCount.Should().Be(0);
     }
 
     [Fact]
-    public async Task GetUserAsync_WithCacheMiss_FetchesFromApiAndCachesResult()
+    public async Task GetUserAsync_WhenCacheMiss_FetchesFromApiAndStores()
     {
         // Arrange
-        var fakeClient = new FakeGitHubUsersClient();
-        var apiUser = MakeUser("octocat");
-        fakeClient.AddUser(apiUser);
         var cache = A.Fake<IUserCacheService>();
-        A.CallTo(() => cache.TryGetAsync("octocat", A<CancellationToken>._))
-            .Returns(Task.FromResult<GitHubUser?>(null));
-        var sut = new GhInfoService(fakeClient, cache, NullLogger<GhInfoService>.Instance);
+        A.CallTo(() => cache.GetAsync(A<string>._, A<CancellationToken>._)).Returns((GitHubUser?)null);
+
+        var apiClient = new FakeGitHubUsersClient();
+        var apiUser = CreateUser("octocat");
+        apiClient.AddUser(apiUser);
+
+        var sut = new GhInfoService(apiClient, cache, NullLogger<GhInfoService>.Instance);
 
         // Act
         var result = await sut.GetUserAsync("octocat", useCache: true);
 
         // Assert
-        result.User.Should().BeSameAs(apiUser);
-        result.FromCache.Should().BeFalse();
-        fakeClient.CallCount.Should().Be(1);
+        result.Should().BeSameAs(apiUser);
+        apiClient.GetUserCallCount.Should().Be(1);
         A.CallTo(() => cache.SetAsync(apiUser, A<CancellationToken>._)).MustHaveHappenedOnceExactly();
     }
 
     [Fact]
-    public async Task GetUserAsync_WithNoCache_BypassesCacheLookupAndStillRefreshes()
+    public async Task GetUserAsync_WithCacheBypass_NeitherReadsNorWritesCache()
     {
         // Arrange
-        var fakeClient = new FakeGitHubUsersClient();
-        var apiUser = MakeUser("octocat");
-        fakeClient.AddUser(apiUser);
         var cache = A.Fake<IUserCacheService>();
-        var sut = new GhInfoService(fakeClient, cache, NullLogger<GhInfoService>.Instance);
+        var apiClient = new FakeGitHubUsersClient();
+        apiClient.AddUser(CreateUser("octocat"));
+        var sut = new GhInfoService(apiClient, cache, NullLogger<GhInfoService>.Instance);
 
         // Act
         var result = await sut.GetUserAsync("octocat", useCache: false);
 
         // Assert
-        result.FromCache.Should().BeFalse();
-        fakeClient.CallCount.Should().Be(1);
-        A.CallTo(() => cache.TryGetAsync(A<string>._, A<CancellationToken>._)).MustNotHaveHappened();
-        A.CallTo(() => cache.SetAsync(apiUser, A<CancellationToken>._)).MustHaveHappenedOnceExactly();
-    }
-
-    [Fact]
-    public async Task GetUserAsync_WhenApiThrowsNotFound_Propagates()
-    {
-        // Arrange
-        var fakeClient = new FakeGitHubUsersClient();
-        var cache = A.Fake<IUserCacheService>();
-        A.CallTo(() => cache.TryGetAsync(A<string>._, A<CancellationToken>._))
-            .Returns(Task.FromResult<GitHubUser?>(null));
-        var sut = new GhInfoService(fakeClient, cache, NullLogger<GhInfoService>.Instance);
-
-        // Act
-        var act = async () => await sut.GetUserAsync("ghost", useCache: true);
-
-        // Assert
-        var ex = await act.Should().ThrowAsync<GitHubUserNotFoundException>();
-        ex.Which.Login.Should().Be("ghost");
+        result.Should().NotBeNull();
+        A.CallTo(() => cache.GetAsync(A<string>._, A<CancellationToken>._)).MustNotHaveHappened();
         A.CallTo(() => cache.SetAsync(A<GitHubUser>._, A<CancellationToken>._)).MustNotHaveHappened();
     }
 
     [Fact]
-    public async Task GetUserAsync_WithNullLogin_Throws()
+    public async Task GetUserAsync_WhenApiReturnsNull_DoesNotCache()
     {
         // Arrange
-        var sut = new GhInfoService(
-            new FakeGitHubUsersClient(),
-            A.Fake<IUserCacheService>(),
-            NullLogger<GhInfoService>.Instance);
+        var cache = A.Fake<IUserCacheService>();
+        A.CallTo(() => cache.GetAsync(A<string>._, A<CancellationToken>._)).Returns((GitHubUser?)null);
+
+        var apiClient = new FakeGitHubUsersClient();
+        var sut = new GhInfoService(apiClient, cache, NullLogger<GhInfoService>.Instance);
 
         // Act
-        var act = async () => await sut.GetUserAsync(null!, useCache: true);
+        var result = await sut.GetUserAsync("ghost", useCache: true);
 
         // Assert
-        await act.Should().ThrowAsync<ArgumentException>();
+        result.Should().BeNull();
+        A.CallTo(() => cache.SetAsync(A<GitHubUser>._, A<CancellationToken>._)).MustNotHaveHappened();
     }
 
-    private static GitHubUser MakeUser(string login)
+    [Fact]
+    public async Task GetUserAsync_WhenApiThrows_PropagatesException()
     {
-        return new GitHubUser
+        // Arrange
+        var cache = A.Fake<IUserCacheService>();
+        A.CallTo(() => cache.GetAsync(A<string>._, A<CancellationToken>._)).Returns((GitHubUser?)null);
+
+        var apiClient = new FakeGitHubUsersClient
         {
-            Login = login,
-            Name = "Octo Cat",
-            Bio = "bio",
-            PublicRepos = 3,
-            Followers = 4,
-            CreatedAt = new DateTimeOffset(2011, 1, 25, 0, 0, 0, TimeSpan.Zero)
+            ExceptionToThrow = new GitHubApiException(System.Net.HttpStatusCode.ServiceUnavailable, "down", "boom"),
         };
+        var sut = new GhInfoService(apiClient, cache, NullLogger<GhInfoService>.Instance);
+
+        // Act
+        Func<Task> act = () => sut.GetUserAsync("octocat", useCache: true);
+
+        // Assert
+        await act.Should().ThrowAsync<GitHubApiException>();
+    }
+
+    private static GitHubUser CreateUser(string login)
+    {
+        return new GitHubUser(
+            login,
+            Name: "The Octocat",
+            Bio: "GitHub mascot",
+            PublicRepos: 8,
+            Followers: 1234,
+            CreatedAt: DateTimeOffset.Parse("2008-01-14T04:33:35Z"));
     }
 }

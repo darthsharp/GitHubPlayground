@@ -1,28 +1,32 @@
-using System.Collections.Concurrent;
 using GhInfo.GitHub;
 
 namespace GhInfo.Tests.Fakes;
 
-/// <summary>
-/// In-memory fake for <see cref="IGitHubUsersClient"/> used in unit tests.
-/// </summary>
-public sealed class FakeGitHubUsersClient : IGitHubUsersClient
+internal sealed class FakeGitHubUsersClient : IGitHubUsersClient
 {
-    private readonly ConcurrentDictionary<string, GitHubUser> _users = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, GitHubUser> _users = new(StringComparer.OrdinalIgnoreCase);
 
-    public int CallCount { get; private set; }
+    public int GetUserCallCount { get; private set; }
 
-    public void AddUser(GitHubUser user) => _users[user.Login] = user;
+    public List<string> RequestedLogins { get; } = new();
 
-    public Task<GitHubUser> GetUserAsync(string login, CancellationToken cancellationToken = default)
+    public Exception? ExceptionToThrow { get; set; }
+
+    public void AddUser(GitHubUser user)
     {
-        CallCount++;
+        _users[user.Login] = user;
+    }
 
-        if (!_users.TryGetValue(login, out var user))
+    public Task<GitHubUser?> GetUserAsync(string login, CancellationToken cancellationToken = default)
+    {
+        GetUserCallCount++;
+        RequestedLogins.Add(login);
+
+        if (ExceptionToThrow is not null)
         {
-            throw new GitHubUserNotFoundException(login);
+            throw ExceptionToThrow;
         }
 
-        return Task.FromResult(user);
+        return Task.FromResult(_users.TryGetValue(login, out var user) ? user : null);
     }
 }

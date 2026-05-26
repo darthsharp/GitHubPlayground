@@ -5,64 +5,46 @@ using Spectre.Console.Cli;
 namespace GhInfo.Cli;
 
 /// <summary>
-/// Bridges Spectre.Console.Cli's <see cref="ITypeRegistrar"/> to an existing
-/// <see cref="IServiceProvider"/> from the Generic Host.
+/// Bridges Spectre.Console.Cli's <see cref="ITypeRegistrar"/> contract onto the
+/// host's <see cref="IServiceProvider"/>: application services are resolved
+/// from the host, while Spectre's own runtime registrations are kept in a
+/// secondary container.
 /// </summary>
-/// <remarks>
-/// <para>
-/// Spectre's <c>CommandApp</c> registers a few additional types at configuration time
-/// (e.g. command implementations and remaining-args). They are kept in a small
-/// supplemental container; resolution falls back to the host's <see cref="IServiceProvider"/>
-/// only when the host has no registration for the requested type.
-/// </para>
-/// <para>
-/// <b>Constraint for contributors:</b> the supplemental container is built from a plain
-/// <see cref="ServiceCollection"/> and therefore knows nothing about host-registered
-/// services. Every command (and every dependency it constructor-injects) MUST be
-/// registered in the host's <see cref="IServiceCollection"/> in <c>Program.cs</c>.
-/// Adding a new Spectre sub-command without an explicit host registration will fail at
-/// resolution time because the supplemental container cannot satisfy the constructor.
-/// </para>
-/// </remarks>
-internal sealed class TypeRegistrar(IServiceProvider hostProvider) : ITypeRegistrar
+public sealed class TypeRegistrar(IServiceProvider rootProvider) : ITypeRegistrar
 {
-    private readonly IServiceProvider _hostProvider = Ensure.NotNull(hostProvider);
-    private readonly ServiceCollection _supplemental = [];
+    private readonly IServiceProvider _rootProvider = Ensure.NotNull(rootProvider);
+    private readonly ServiceCollection _localServices = new();
 
-    public ITypeResolver Build() =>
-        new TypeResolver(_hostProvider, _supplemental.BuildServiceProvider());
+    /// <inheritdoc />
+    public ITypeResolver Build()
+    {
+        return new TypeResolver(_rootProvider.CreateScope(), _localServices.BuildServiceProvider());
+    }
 
-    public void Register(Type service, Type implementation) =>
-        _supplemental.AddSingleton(service, implementation);
+    /// <inheritdoc />
+    public void Register(Type service, Type implementation)
+    {
+        Ensure.NotNull(service);
+        Ensure.NotNull(implementation);
 
-    public void RegisterInstance(Type service, object implementation) =>
-        _supplemental.AddSingleton(service, implementation);
+        _localServices.AddTransient(service, implementation);
+    }
 
+    /// <inheritdoc />
+    public void RegisterInstance(Type service, object implementation)
+    {
+        Ensure.NotNull(service);
+        Ensure.NotNull(implementation);
+
+        _localServices.AddSingleton(service, implementation);
+    }
+
+    /// <inheritdoc />
     public void RegisterLazy(Type service, Func<object> factory)
     {
+        Ensure.NotNull(service);
         Ensure.NotNull(factory);
-        _supplemental.AddSingleton(service, _ => factory());
+
+        _localServices.AddSingleton(service, _ => factory());
     }
-}
-
-/// <summary>
-/// Resolves types from a supplemental container first, then falls back to the host provider.
-/// </summary>
-internal sealed class TypeResolver(IServiceProvider hostProvider, ServiceProvider supplemental)
-    : ITypeResolver, IDisposable
-{
-    private readonly IServiceProvider _hostProvider = Ensure.NotNull(hostProvider);
-    private readonly ServiceProvider _supplemental = Ensure.NotNull(supplemental);
-
-    public object? Resolve(Type? type)
-    {
-        if (type is null)
-        {
-            return null;
-        }
-
-        return _hostProvider.GetService(type) ?? _supplemental.GetService(type);
-    }
-
-    public void Dispose() => _supplemental.Dispose();
 }

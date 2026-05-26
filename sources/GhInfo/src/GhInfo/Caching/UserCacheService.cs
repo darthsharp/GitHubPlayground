@@ -7,7 +7,8 @@ using Microsoft.Extensions.Options;
 namespace GhInfo.Caching;
 
 /// <summary>
-/// SQLite-backed implementation of <see cref="IUserCacheService"/>.
+/// Default <see cref="IUserCacheService"/> implementation that persists snapshots
+/// via Entity Framework Core in a local SQLite database.
 /// </summary>
 public sealed class UserCacheService(
     CacheDbContext dbContext,
@@ -20,21 +21,16 @@ public sealed class UserCacheService(
     private readonly TimeProvider _timeProvider = Ensure.NotNull(timeProvider);
     private readonly ILogger<UserCacheService> _logger = Ensure.NotNull(logger);
 
-    /// <inheritdoc/>
-    public Task InitializeAsync(CancellationToken cancellationToken = default)
-    {
-        return _dbContext.Database.EnsureCreatedAsync(cancellationToken);
-    }
-
-    /// <inheritdoc/>
-    public async Task<GitHubUser?> TryGetAsync(string login, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<GitHubUser?> GetAsync(string login, CancellationToken cancellationToken = default)
     {
         Ensure.IsNotNullOrWhitespace(login);
 
         var key = NormalizeLogin(login);
+
         var entry = await _dbContext.Users
             .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Login == key, cancellationToken)
+            .FirstOrDefaultAsync(x => x.Login == key, cancellationToken)
             .ConfigureAwait(false);
 
         if (entry is null)
@@ -44,65 +40,59 @@ public sealed class UserCacheService(
             return null;
         }
 
-        var age = _timeProvider.GetUtcNow() - entry.CachedAt;
-        if (age > _options.TimeToLive)
+        var now = _timeProvider.GetUtcNow();
+        var age = now - entry.CachedAt;
+        var ttl = TimeSpan.FromMinutes(_options.DurationMinutes);
+
+        if (age >= ttl)
         {
-            _logger.LogDebug("Cache entry for {Login} expired ({Age} > {Ttl})", key, age, _options.TimeToLive);
+            _logger.LogDebug("Cache entry for {Login} is stale (age {Age}, ttl {Ttl})", key, age, ttl);
 
             return null;
         }
 
-        _logger.LogInformation("Cache hit for {Login} (age {Age})", key, age);
+        _logger.LogDebug("Cache hit for {Login} (age {Age})", key, age);
 
-        return new GitHubUser
-        {
-            Login = entry.Login,
-            Name = entry.Name,
-            Bio = entry.Bio,
-            PublicRepos = entry.PublicRepos,
-            Followers = entry.Followers,
-            CreatedAt = entry.CreatedAt
-        };
+        return new GitHubUser(
+            entry.Login,
+            entry.Name,
+            entry.Bio,
+            entry.PublicRepos,
+            entry.Followers,
+            entry.CreatedAt);
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc />
     public async Task SetAsync(GitHubUser user, CancellationToken cancellationToken = default)
     {
         Ensure.NotNull(user);
 
         var key = NormalizeLogin(user.Login);
-        var existing = await _dbContext.Users
-            .FirstOrDefaultAsync(u => u.Login == key, cancellationToken)
-            .ConfigureAwait(false);
-
         var now = _timeProvider.GetUtcNow();
 
-        if (existing is null)
+        var existing = await _dbContext.Users
+            .FirstOrDefaultAsync(x => x.Login == key, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is not null)
         {
-            _dbContext.Users.Add(new CachedUser
-            {
-                Login = key,
-                Name = user.Name,
-                Bio = user.Bio,
-                PublicRepos = user.PublicRepos,
-                Followers = user.Followers,
-                CreatedAt = user.CreatedAt,
-                CachedAt = now
-            });
+            _dbContext.Users.Remove(existing);
         }
-        else
+
+        _dbContext.Users.Add(new CachedUser
         {
-            existing.Name = user.Name;
-            existing.Bio = user.Bio;
-            existing.PublicRepos = user.PublicRepos;
-            existing.Followers = user.Followers;
-            existing.CreatedAt = user.CreatedAt;
-            existing.CachedAt = now;
-        }
+            Login = key,
+            Name = user.Name,
+            Bio = user.Bio,
+            PublicRepos = user.PublicRepos,
+            Followers = user.Followers,
+            CreatedAt = user.CreatedAt,
+            CachedAt = now,
+        });
 
         await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-        _logger.LogInformation("Cached GitHub user {Login}", key);
+        _logger.LogDebug("Stored cache entry for {Login} at {CachedAt}", key, now);
     }
 
     private static string NormalizeLogin(string login)

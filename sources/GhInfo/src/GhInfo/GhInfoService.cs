@@ -6,41 +6,57 @@ using Microsoft.Extensions.Logging;
 namespace GhInfo;
 
 /// <summary>
-/// Default implementation of <see cref="IGhInfoService"/> that orchestrates cache and HTTP lookups.
+/// Default <see cref="IGhInfoService"/> implementation that combines the
+/// <see cref="IGitHubUsersClient"/> with the local <see cref="IUserCacheService"/>.
 /// </summary>
 public sealed class GhInfoService(
-    IGitHubUsersClient client,
-    IUserCacheService cache,
+    IGitHubUsersClient gitHubUsersClient,
+    IUserCacheService userCacheService,
     ILogger<GhInfoService> logger) : IGhInfoService
 {
-    private readonly IGitHubUsersClient _client = Ensure.NotNull(client);
-    private readonly IUserCacheService _cache = Ensure.NotNull(cache);
+    private readonly IGitHubUsersClient _gitHubUsersClient = Ensure.NotNull(gitHubUsersClient);
+    private readonly IUserCacheService _userCacheService = Ensure.NotNull(userCacheService);
     private readonly ILogger<GhInfoService> _logger = Ensure.NotNull(logger);
 
-    /// <inheritdoc/>
-    public async Task<GhInfoResult> GetUserAsync(
-        string login,
-        bool useCache,
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<GitHubUser?> GetUserAsync(string login, bool useCache, CancellationToken cancellationToken = default)
     {
         Ensure.IsNotNullOrWhitespace(login);
 
         if (useCache)
         {
-            var cached = await _cache.TryGetAsync(login, cancellationToken).ConfigureAwait(false);
+            var cached = await _userCacheService
+                .GetAsync(login, cancellationToken)
+                .ConfigureAwait(false);
+
             if (cached is not null)
             {
-                return new GhInfoResult(cached, FromCache: true);
+                _logger.LogInformation("Returning cached profile for {Login}", login);
+
+                return cached;
             }
         }
         else
         {
-            _logger.LogInformation("Bypassing cache for {Login} (--no-cache)", login);
+            _logger.LogInformation("Cache bypass requested for {Login}", login);
         }
 
-        var user = await _client.GetUserAsync(login, cancellationToken).ConfigureAwait(false);
-        await _cache.SetAsync(user, cancellationToken).ConfigureAwait(false);
+        var user = await _gitHubUsersClient
+            .GetUserAsync(login, cancellationToken)
+            .ConfigureAwait(false);
 
-        return new GhInfoResult(user, FromCache: false);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (useCache)
+        {
+            await _userCacheService
+                .SetAsync(user, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        return user;
     }
 }

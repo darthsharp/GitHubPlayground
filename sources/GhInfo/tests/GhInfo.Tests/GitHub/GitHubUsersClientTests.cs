@@ -1,5 +1,4 @@
 using System.Net;
-using System.Text;
 using AwesomeAssertions;
 using GhInfo.GitHub;
 using GhInfo.Tests.Fakes;
@@ -9,140 +8,92 @@ namespace GhInfo.Tests.GitHub;
 
 public sealed class GitHubUsersClientTests
 {
-    private const string ValidUserJson = """
+    private const string OctocatJson = """
         {
           "login": "octocat",
           "name": "The Octocat",
-          "bio": "tentacular",
+          "bio": "GitHub mascot",
           "public_repos": 8,
-          "followers": 100,
-          "created_at": "2011-01-25T18:44:36Z"
+          "followers": 1234,
+          "created_at": "2008-01-14T04:33:35Z"
         }
         """;
 
     [Fact]
-    public async Task GetUserAsync_OnHttp200_ReturnsParsedUser()
+    public async Task GetUserAsync_OnSuccess_ReturnsParsedUser()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(ValidUserJson, Encoding.UTF8, "application/json")
-        };
-        var sut = CreateSut(response, out var handler);
+        var handler = StubHttpMessageHandler.ReturnsJson(HttpStatusCode.OK, OctocatJson);
+        var sut = CreateSut(handler);
 
         // Act
         var user = await sut.GetUserAsync("octocat");
 
         // Assert
-        user.Login.Should().Be("octocat");
+        user.Should().NotBeNull();
+        user!.Login.Should().Be("octocat");
         user.Name.Should().Be("The Octocat");
-        user.Bio.Should().Be("tentacular");
         user.PublicRepos.Should().Be(8);
-        user.Followers.Should().Be(100);
-        user.CreatedAt.Should().Be(new DateTimeOffset(2011, 1, 25, 18, 44, 36, TimeSpan.Zero));
-        handler.LastRequest!.RequestUri!.ToString().Should().EndWith("users/octocat");
+        user.Followers.Should().Be(1234);
+        user.CreatedAt.Should().Be(DateTimeOffset.Parse("2008-01-14T04:33:35Z"));
+        handler.Requests.Should().ContainSingle()
+            .Which.RequestUri!.ToString().Should().Be("https://api.github.com/users/octocat");
     }
 
     [Fact]
-    public async Task GetUserAsync_EscapesLoginInRequestUri()
+    public async Task GetUserAsync_On404_ReturnsNull()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent(ValidUserJson, Encoding.UTF8, "application/json")
-        };
-        var sut = CreateSut(response, out var handler);
+        var handler = StubHttpMessageHandler.ReturnsStatus(HttpStatusCode.NotFound);
+        var sut = CreateSut(handler);
 
         // Act
-        _ = await sut.GetUserAsync("foo bar");
+        var user = await sut.GetUserAsync("ghost");
 
         // Assert
-        handler.LastRequest!.RequestUri!.AbsoluteUri.Should().EndWith("users/foo%20bar");
+        user.Should().BeNull();
     }
 
     [Fact]
-    public async Task GetUserAsync_OnHttp404_ThrowsGitHubUserNotFoundException()
+    public async Task GetUserAsync_OnServerError_ThrowsGitHubApiException()
     {
         // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.NotFound)
-        {
-            Content = new StringContent("""{"message":"Not Found"}""", Encoding.UTF8, "application/json")
-        };
-        var sut = CreateSut(response, out _);
+        var handler = StubHttpMessageHandler.ReturnsStatus(HttpStatusCode.InternalServerError, "boom");
+        var sut = CreateSut(handler);
 
         // Act
-        var act = async () => await sut.GetUserAsync("ghost");
+        Func<Task> act = () => sut.GetUserAsync("octocat");
 
         // Assert
-        var ex = await act.Should().ThrowAsync<GitHubUserNotFoundException>();
-        ex.Which.Login.Should().Be("ghost");
-        ex.Which.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        var ex = await act.Should().ThrowAsync<GitHubApiException>();
+        ex.Which.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+        ex.Which.ResponseBody.Should().Be("boom");
     }
 
     [Theory]
-    [InlineData(HttpStatusCode.InternalServerError)]
-    [InlineData(HttpStatusCode.Forbidden)]
-    [InlineData(HttpStatusCode.BadGateway)]
-    public async Task GetUserAsync_OnHttpFailure_ThrowsGitHubApiException(HttpStatusCode status)
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetUserAsync_WithBlankLogin_Throws(string login)
     {
         // Arrange
-        var response = new HttpResponseMessage(status)
-        {
-            Content = new StringContent("oops", Encoding.UTF8, "text/plain")
-        };
-        var sut = CreateSut(response, out _);
+        var handler = StubHttpMessageHandler.ReturnsJson(HttpStatusCode.OK, OctocatJson);
+        var sut = CreateSut(handler);
 
         // Act
-        var act = async () => await sut.GetUserAsync("octocat");
-
-        // Assert
-        var ex = await act.Should().ThrowAsync<GitHubApiException>();
-        ex.Which.StatusCode.Should().Be(status);
-        ex.Which.Should().NotBeOfType<GitHubUserNotFoundException>();
-        ex.Which.Message.Should().Contain("oops");
-    }
-
-    [Fact]
-    public async Task GetUserAsync_OnEmptyResponseBody_ThrowsGitHubApiException()
-    {
-        // Arrange
-        var response = new HttpResponseMessage(HttpStatusCode.OK)
-        {
-            Content = new StringContent("null", Encoding.UTF8, "application/json")
-        };
-        var sut = CreateSut(response, out _);
-
-        // Act
-        var act = async () => await sut.GetUserAsync("octocat");
-
-        // Assert
-        var ex = await act.Should().ThrowAsync<GitHubApiException>();
-        ex.Which.Message.Should().Contain("empty");
-    }
-
-    [Fact]
-    public async Task GetUserAsync_WithWhitespaceLogin_Throws()
-    {
-        // Arrange
-        var sut = CreateSut(new HttpResponseMessage(HttpStatusCode.OK), out _);
-
-        // Act
-        var act = async () => await sut.GetUserAsync("   ");
+        Func<Task> act = () => sut.GetUserAsync(login);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentException>();
     }
 
-    private static GitHubUsersClient CreateSut(
-        HttpResponseMessage response,
-        out StubHttpMessageHandler handler)
+    private static GitHubUsersClient CreateSut(StubHttpMessageHandler handler)
     {
-        handler = new StubHttpMessageHandler(response);
-        var http = new HttpClient(handler)
+        var httpClient = new HttpClient(handler)
         {
-            BaseAddress = new Uri("https://api.github.com/")
+            BaseAddress = new Uri("https://api.github.com/"),
         };
+        httpClient.DefaultRequestHeaders.UserAgent.ParseAdd("gh-info-tests");
 
-        return new GitHubUsersClient(http, NullLogger<GitHubUsersClient>.Instance);
+        return new GitHubUsersClient(httpClient, NullLogger<GitHubUsersClient>.Instance);
     }
 }

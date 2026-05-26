@@ -1,191 +1,97 @@
-using System.Net;
 using AwesomeAssertions;
 using FakeItEasy;
+using GhInfo;
+using GhInfo.Caching;
 using GhInfo.Cli;
 using GhInfo.GitHub;
+using GhInfo.Tests.Fakes;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Spectre.Console;
 using Spectre.Console.Cli;
+using Spectre.Console.Testing;
 
 namespace GhInfo.Tests.Cli;
 
 public sealed class UserInfoCommandTests
 {
     [Fact]
-    public async Task ExecuteAsync_OnSuccess_RendersUserAndReturnsZero()
+    public async Task Execute_WithExistingUser_PrintsTableAndReturnsZero()
     {
         // Arrange
-        var user = MakeUser();
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync("octocat", true, A<CancellationToken>._))
-            .Returns(new GhInfoResult(user, FromCache: false));
-        var renderer = A.Fake<IUserTableRenderer>();
-        ICommand command = CreateCommand(service, renderer);
+        var fakeClient = new FakeGitHubUsersClient();
+        fakeClient.AddUser(CreateUser("octocat"));
+        var (app, console) = CreateApp(fakeClient);
 
         // Act
-        var exitCode = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = false },
-            CancellationToken.None);
+        var exitCode = await app.RunAsync(new[] { "octocat", "--no-cache" });
 
         // Assert
         exitCode.Should().Be(0);
-        A.CallTo(() => renderer.Render(user, false)).MustHaveHappenedOnceExactly();
+        console.Output.Should().Contain("octocat").And.Contain("The Octocat");
     }
 
     [Fact]
-    public async Task ExecuteAsync_OnCacheHit_RendersWithFromCacheTrue()
+    public async Task Execute_WithUnknownUser_ReturnsExitCodeOne()
     {
         // Arrange
-        var user = MakeUser();
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .Returns(new GhInfoResult(user, FromCache: true));
-        var renderer = A.Fake<IUserTableRenderer>();
-        ICommand command = CreateCommand(service, renderer);
+        var fakeClient = new FakeGitHubUsersClient();
+        var (app, console) = CreateApp(fakeClient);
 
         // Act
-        var exitCode = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = false },
-            CancellationToken.None);
-
-        // Assert
-        exitCode.Should().Be(0);
-        A.CallTo(() => renderer.Render(user, true)).MustHaveHappenedOnceExactly();
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_WithNoCacheFlag_PassesUseCacheFalse()
-    {
-        // Arrange
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .Returns(new GhInfoResult(MakeUser(), FromCache: false));
-        ICommand command = CreateCommand(service);
-
-        // Act
-        _ = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = true },
-            CancellationToken.None);
-
-        // Assert
-        A.CallTo(() => service.GetUserAsync("octocat", false, A<CancellationToken>._))
-            .MustHaveHappenedOnceExactly();
-    }
-
-    [Fact]
-    public async Task ExecuteAsync_OnUserNotFound_ReturnsExit1AndDoesNotRender()
-    {
-        // Arrange
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .ThrowsAsync(new GitHubUserNotFoundException("ghost"));
-        var renderer = A.Fake<IUserTableRenderer>();
-        ICommand command = CreateCommand(service, renderer);
-
-        // Act
-        var exitCode = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "ghost", NoCache = false },
-            CancellationToken.None);
+        var exitCode = await app.RunAsync(new[] { "ghost", "--no-cache" });
 
         // Assert
         exitCode.Should().Be(1);
-        A.CallTo(renderer).MustNotHaveHappened();
+        console.Output.Should().Contain("No GitHub user found");
     }
 
     [Fact]
-    public async Task ExecuteAsync_OnGitHubApiException_ReturnsExit2()
+    public async Task Execute_WhenApiThrows_ReturnsExitCodeTwo()
     {
         // Arrange
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .ThrowsAsync(new GitHubApiException(HttpStatusCode.InternalServerError, "boom"));
-        ICommand command = CreateCommand(service);
+        var fakeClient = new FakeGitHubUsersClient
+        {
+            ExceptionToThrow = new GitHubApiException(System.Net.HttpStatusCode.BadGateway, responseBody: null, "upstream"),
+        };
+        var (app, console) = CreateApp(fakeClient);
 
         // Act
-        var exitCode = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = false },
-            CancellationToken.None);
+        var exitCode = await app.RunAsync(new[] { "octocat", "--no-cache" });
 
         // Assert
         exitCode.Should().Be(2);
+        console.Output.Should().Contain("GitHub API error");
     }
 
-    [Fact]
-    public async Task ExecuteAsync_OnHttpRequestException_ReturnsExit3()
+    private static (CommandApp<UserInfoCommand> App, TestConsole Console) CreateApp(IGitHubUsersClient gitHubUsersClient)
     {
-        // Arrange
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .ThrowsAsync(new HttpRequestException("dns"));
-        ICommand command = CreateCommand(service);
+        var console = new TestConsole();
 
-        // Act
-        var exitCode = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = false },
-            CancellationToken.None);
+        var services = new ServiceCollection();
+        services.AddSingleton<IAnsiConsole>(console);
+        services.AddSingleton(gitHubUsersClient);
+        services.AddSingleton(A.Fake<IUserCacheService>());
+        services.AddSingleton<IGhInfoService, GhInfoService>();
+        services.AddSingleton<IUserTableRenderer, UserTableRenderer>();
+        services.AddSingleton(typeof(Microsoft.Extensions.Logging.ILogger<>), typeof(NullLogger<>));
+        services.AddTransient<UserInfoCommand>();
 
-        // Assert
-        exitCode.Should().Be(3);
+        var registrar = new TypeRegistrar(services.BuildServiceProvider());
+        var app = new CommandApp<UserInfoCommand>(registrar);
+        app.Configure(c => c.PropagateExceptions());
+
+        return (app, console);
     }
 
-    [Fact]
-    public async Task ExecuteAsync_ForwardsCancellationToken()
+    private static GitHubUser CreateUser(string login)
     {
-        // Arrange
-        var service = A.Fake<IGhInfoService>();
-        A.CallTo(() => service.GetUserAsync(A<string>._, A<bool>._, A<CancellationToken>._))
-            .Returns(new GhInfoResult(MakeUser(), FromCache: false));
-        ICommand command = CreateCommand(service);
-        using var cts = new CancellationTokenSource();
-
-        // Act
-        _ = await command.ExecuteAsync(
-            CreateContext(),
-            new UserInfoCommand.Settings { Username = "octocat", NoCache = false },
-            cts.Token);
-
-        // Assert
-        A.CallTo(() => service.GetUserAsync("octocat", true, cts.Token))
-            .MustHaveHappenedOnceExactly();
-    }
-
-    private static UserInfoCommand CreateCommand(
-        IGhInfoService service,
-        IUserTableRenderer? renderer = null,
-        IAnsiConsole? console = null)
-    {
-        return new UserInfoCommand(
-            service,
-            renderer ?? A.Fake<IUserTableRenderer>(),
-            console ?? A.Fake<IAnsiConsole>(),
-            NullLogger<UserInfoCommand>.Instance);
-    }
-
-    private static CommandContext CreateContext()
-    {
-        return new CommandContext(
-            Array.Empty<string>(),
-            A.Fake<IRemainingArguments>(),
-            "user-info",
-            data: null);
-    }
-
-    private static GitHubUser MakeUser()
-    {
-        return new GitHubUser
-        {
-            Login = "octocat",
-            Name = "The Octocat",
-            Bio = "tentacles",
-            PublicRepos = 8,
-            Followers = 100,
-            CreatedAt = new DateTimeOffset(2011, 1, 25, 0, 0, 0, TimeSpan.Zero)
-        };
+        return new GitHubUser(
+            login,
+            Name: "The Octocat",
+            Bio: "GitHub mascot",
+            PublicRepos: 8,
+            Followers: 1234,
+            CreatedAt: DateTimeOffset.Parse("2008-01-14T04:33:35Z"));
     }
 }

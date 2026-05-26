@@ -1,30 +1,38 @@
+using System.Net;
+using System.Text;
+
 namespace GhInfo.Tests.Fakes;
 
-/// <summary>
-/// Test stub for <see cref="HttpMessageHandler"/> that returns a pre-configured response
-/// (or throws a pre-configured exception) for the first incoming request.
-/// </summary>
-public sealed class StubHttpMessageHandler : HttpMessageHandler
+internal sealed class StubHttpMessageHandler : HttpMessageHandler
 {
     private readonly Func<HttpRequestMessage, HttpResponseMessage> _responder;
 
-    public StubHttpMessageHandler(HttpResponseMessage response)
-    {
-        _responder = _ => response;
-    }
-
-    public StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
+    private StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> responder)
     {
         _responder = responder;
     }
 
-    public HttpRequestMessage? LastRequest { get; private set; }
+    public List<HttpRequestMessage> Requests { get; } = new();
 
-    protected override Task<HttpResponseMessage> SendAsync(
-        HttpRequestMessage request,
-        CancellationToken cancellationToken)
+    public static StubHttpMessageHandler ReturnsJson(HttpStatusCode statusCode, string json)
     {
-        LastRequest = request;
+        return new StubHttpMessageHandler(_ => new HttpResponseMessage(statusCode)
+        {
+            Content = new StringContent(json, Encoding.UTF8, "application/json"),
+        });
+    }
+
+    public static StubHttpMessageHandler ReturnsStatus(HttpStatusCode statusCode, string? body = null)
+    {
+        return new StubHttpMessageHandler(_ => new HttpResponseMessage(statusCode)
+        {
+            Content = body is null ? new StringContent(string.Empty) : new StringContent(body),
+        });
+    }
+
+    protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        Requests.Add(request);
 
         return Task.FromResult(_responder(request));
     }

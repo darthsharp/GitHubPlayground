@@ -1,46 +1,49 @@
-using System.ComponentModel.DataAnnotations;
-
 namespace GhInfo.Caching;
 
 /// <summary>
-/// EF Core entity representing a single cached GitHub user lookup.
+/// Persistent representation of a GitHub user snapshot stored in the local SQLite cache.
 /// </summary>
 public sealed class CachedUser
 {
     /// <summary>
-    /// Gets or sets the lowercase GitHub login (primary key).
+    /// Gets the GitHub login, used as the primary key of the cache entry.
     /// </summary>
-    [Key]
-    [MaxLength(64)]
-    public required string Login { get; set; }
+    /// <value>The lower-cased, unique GitHub account login.</value>
+    public required string Login { get; init; }
 
     /// <summary>
-    /// Gets or sets the user's display name, or <see langword="null"/> if not set.
+    /// Gets the user's display name at the time the snapshot was captured.
     /// </summary>
-    public string? Name { get; set; }
+    /// <value>The display name, or <see langword="null"/> if GitHub did not return one.</value>
+    public string? Name { get; init; }
 
     /// <summary>
-    /// Gets or sets the user's profile biography, or <see langword="null"/> if not set.
+    /// Gets the user's biography text at the time the snapshot was captured.
     /// </summary>
-    public string? Bio { get; set; }
+    /// <value>The biography, or <see langword="null"/> if not set on the account.</value>
+    public string? Bio { get; init; }
 
     /// <summary>
-    /// Gets or sets the number of public repositories owned by the user.
+    /// Gets the number of public repositories the user owned when the snapshot was captured.
     /// </summary>
-    public int PublicRepos { get; set; }
+    /// <value>A non-negative integer.</value>
+    public int PublicRepos { get; init; }
 
     /// <summary>
-    /// Gets or sets the number of followers of the user.
+    /// Gets the number of followers the user had when the snapshot was captured.
     /// </summary>
-    public int Followers { get; set; }
+    /// <value>A non-negative integer.</value>
+    public int Followers { get; init; }
 
     /// <summary>
-    /// Gets or sets the UTC timestamp at which the account was created.
+    /// Gets the timestamp at which the GitHub account was created.
     /// </summary>
-    public DateTimeOffset CreatedAt { get; set; }
+    /// <value>The account creation timestamp reported by GitHub.</value>
+    public DateTimeOffset CreatedAt { get; init; }
 
     /// <summary>
-    /// Gets or sets the UTC timestamp at which this row was cached.
+    /// Gets the timestamp at which this snapshot was written to the cache.
     /// </summary>
-    public DateTimeOffset CachedAt { get; set; }
+    /// <value>A UTC instant; used to determine cache freshness.</value>
+    public DateTimeOffset CachedAt { get; init; }
 }

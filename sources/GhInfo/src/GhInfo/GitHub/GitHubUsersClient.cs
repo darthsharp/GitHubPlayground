@@ -6,21 +6,21 @@ using Microsoft.Extensions.Logging;
 namespace GhInfo.GitHub;
 
 /// <summary>
-/// Typed HTTP client that talks to the GitHub REST API.
+/// Typed HTTP client that calls the GitHub <c>/users/{username}</c> REST endpoint.
 /// </summary>
 public sealed class GitHubUsersClient(HttpClient httpClient, ILogger<GitHubUsersClient> logger) : IGitHubUsersClient
 {
     private readonly HttpClient _httpClient = Ensure.NotNull(httpClient);
     private readonly ILogger<GitHubUsersClient> _logger = Ensure.NotNull(logger);
 
-    /// <inheritdoc/>
-    public async Task<GitHubUser> GetUserAsync(string login, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public async Task<GitHubUser?> GetUserAsync(string login, CancellationToken cancellationToken = default)
     {
         Ensure.IsNotNullOrWhitespace(login);
 
         var requestUri = $"users/{Uri.EscapeDataString(login)}";
 
-        _logger.LogInformation("Fetching GitHub user {Login} from {RequestUri}", login, requestUri);
+        _logger.LogDebug("Requesting GitHub user {Login} from {RequestUri}", login, requestUri);
 
         using var response = await _httpClient
             .GetAsync(requestUri, cancellationToken)
@@ -28,7 +28,9 @@ public sealed class GitHubUsersClient(HttpClient httpClient, ILogger<GitHubUsers
 
         if (response.StatusCode == HttpStatusCode.NotFound)
         {
-            throw new GitHubUserNotFoundException(login);
+            _logger.LogInformation("GitHub user {Login} not found", login);
+
+            return null;
         }
 
         if (!response.IsSuccessStatusCode)
@@ -39,7 +41,8 @@ public sealed class GitHubUsersClient(HttpClient httpClient, ILogger<GitHubUsers
 
             throw new GitHubApiException(
                 response.StatusCode,
-                $"GitHub API request failed with status {(int)response.StatusCode} {response.ReasonPhrase}: {body}");
+                body,
+                $"GitHub API request for user '{login}' failed with HTTP {(int)response.StatusCode} {response.ReasonPhrase}.");
         }
 
         var user = await response.Content
@@ -50,7 +53,8 @@ public sealed class GitHubUsersClient(HttpClient httpClient, ILogger<GitHubUsers
         {
             throw new GitHubApiException(
                 response.StatusCode,
-                "GitHub API returned an empty response body.");
+                responseBody: null,
+                $"GitHub API returned an empty body for user '{login}'.");
         }
 
         return user;
