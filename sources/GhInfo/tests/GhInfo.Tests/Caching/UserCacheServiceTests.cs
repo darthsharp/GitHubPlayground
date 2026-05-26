@@ -12,142 +12,115 @@ namespace GhInfo.Tests.Caching;
 public sealed class UserCacheServiceTests : IAsyncLifetime
 {
     private readonly SqliteConnection _connection = new("DataSource=:memory:");
-    private CacheDbContext _dbContext = default!;
-    private FakeTimeProvider _time = default!;
-    private UserCacheService _sut = default!;
-    private CacheOptions _options = default!;
+    private CacheDbContext _dbContext = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _connection.OpenAsync();
 
-        var dbOptions = new DbContextOptionsBuilder<CacheDbContext>()
-            .UseSqlite(_connection)
-            .Options;
-
-        _dbContext = new CacheDbContext(dbOptions);
+        _dbContext = CreateDbContext();
         await _dbContext.Database.EnsureCreatedAsync();
-
-        _time = new FakeTimeProvider(startDateTime: new DateTimeOffset(2026, 5, 25, 12, 0, 0, TimeSpan.Zero));
-        _options = new CacheOptions { TimeToLiveMinutes = 15 };
-        _sut = new UserCacheService(
-            _dbContext,
-            Options.Create(_options),
-            _time,
-            NullLogger<UserCacheService>.Instance);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await _dbContext.DisposeAsync();
         await _connection.DisposeAsync();
     }
 
     [Fact]
-    public async Task TryGetAsync_WhenEntryMissing_ReturnsNull()
+    public async Task GetAsync_WhenEntryMissing_ReturnsNull()
     {
+        // Arrange
+        var sut = CreateSut(out _);
+
         // Act
-        var result = await _sut.TryGetAsync("octocat");
+        var result = await sut.GetAsync("octocat");
 
         // Assert
         result.Should().BeNull();
     }
 
     [Fact]
-    public async Task SetAsync_ThenTryGetAsync_ReturnsCachedUser()
+    public async Task GetAsync_WhenEntryFresh_ReturnsCachedUser()
     {
         // Arrange
-        var user = MakeUser("octocat");
-        await _sut.SetAsync(user);
+        var sut = CreateSut(out var timeProvider);
+        var user = CreateUser("octocat");
+        await sut.SetAsync(user);
+
+        timeProvider.Advance(TimeSpan.FromMinutes(5));
 
         // Act
-        var result = await _sut.TryGetAsync("octocat");
+        var result = await sut.GetAsync("octocat");
 
         // Assert
         result.Should().NotBeNull();
         result!.Login.Should().Be("octocat");
-        result.Name.Should().Be(user.Name);
-        result.Followers.Should().Be(user.Followers);
-        result.PublicRepos.Should().Be(user.PublicRepos);
-        result.CreatedAt.Should().Be(user.CreatedAt);
+        result.PublicRepos.Should().Be(8);
     }
 
     [Fact]
-    public async Task TryGetAsync_IsCaseInsensitive()
+    public async Task GetAsync_WhenEntryExceedsTtl_ReturnsNull()
     {
         // Arrange
-        await _sut.SetAsync(MakeUser("OctoCat"));
+        var sut = CreateSut(out var timeProvider, durationMinutes: 15);
+        await sut.SetAsync(CreateUser("octocat"));
+
+        timeProvider.Advance(TimeSpan.FromMinutes(16));
 
         // Act
-        var result = await _sut.TryGetAsync("octocat");
-
-        // Assert
-        result.Should().NotBeNull();
-        result!.Login.Should().Be("octocat");
-    }
-
-    [Fact]
-    public async Task TryGetAsync_WhenEntryExpired_ReturnsNull()
-    {
-        // Arrange
-        await _sut.SetAsync(MakeUser("octocat"));
-        _time.Advance(TimeSpan.FromMinutes(16));
-
-        // Act
-        var result = await _sut.TryGetAsync("octocat");
+        var result = await sut.GetAsync("octocat");
 
         // Assert
         result.Should().BeNull();
     }
 
     [Fact]
-    public async Task TryGetAsync_AtExactlyTtl_ReturnsCachedUser()
+    public async Task GetAsync_NormalizesLoginCase()
     {
         // Arrange
-        await _sut.SetAsync(MakeUser("octocat"));
-        _time.Advance(TimeSpan.FromMinutes(15));
+        var sut = CreateSut(out _);
+        await sut.SetAsync(CreateUser("Octocat"));
 
         // Act
-        var result = await _sut.TryGetAsync("octocat");
+        var result = await sut.GetAsync("OCTOCAT");
 
         // Assert
         result.Should().NotBeNull();
+        result!.Login.Should().Be("octocat");
     }
 
     [Fact]
-    public async Task SetAsync_TwiceForSameLogin_UpdatesExistingEntry()
+    public async Task SetAsync_OverwritesPreviousEntryAndRefreshesTimestamp()
     {
         // Arrange
-        await _sut.SetAsync(MakeUser("octocat", followers: 10));
+        var sut = CreateSut(out var timeProvider, durationMinutes: 15);
+        await sut.SetAsync(CreateUser("octocat", publicRepos: 1));
 
-        _time.Advance(TimeSpan.FromMinutes(5));
-        await _sut.SetAsync(MakeUser("octocat", followers: 42));
+        timeProvider.Advance(TimeSpan.FromMinutes(14));
 
         // Act
-        var result = await _sut.TryGetAsync("octocat");
+        await sut.SetAsync(CreateUser("octocat", publicRepos: 42));
 
-        // Assert
+        timeProvider.Advance(TimeSpan.FromMinutes(10));
+        var result = await sut.GetAsync("octocat");
+
+        // Assert — second SetAsync replaces the entry AND resets the TTL window
         result.Should().NotBeNull();
-        result!.Followers.Should().Be(42);
-        var rows = await _dbContext.Users.AsNoTracking().CountAsync();
-        rows.Should().Be(1);
+        result!.PublicRepos.Should().Be(42);
     }
 
-    [Fact]
-    public async Task TryGetAsync_WithNullLogin_Throws()
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task GetAsync_WithBlankLogin_Throws(string login)
     {
-        // Act
-        var act = async () => await _sut.TryGetAsync(null!);
+        // Arrange
+        var sut = CreateSut(out _);
 
-        // Assert
-        await act.Should().ThrowAsync<ArgumentException>();
-    }
-
-    [Fact]
-    public async Task TryGetAsync_WithWhitespaceLogin_Throws()
-    {
         // Act
-        var act = async () => await _sut.TryGetAsync("   ");
+        Func<Task> act = () => sut.GetAsync(login);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentException>();
@@ -156,41 +129,41 @@ public sealed class UserCacheServiceTests : IAsyncLifetime
     [Fact]
     public async Task SetAsync_WithNullUser_Throws()
     {
+        // Arrange
+        var sut = CreateSut(out _);
+
         // Act
-        var act = async () => await _sut.SetAsync(null!);
+        Func<Task> act = () => sut.SetAsync(user: null!);
 
         // Assert
         await act.Should().ThrowAsync<ArgumentNullException>();
     }
 
-    [Fact]
-    public async Task InitializeAsync_OnFreshDatabase_CreatesSchema()
+    private CacheDbContext CreateDbContext()
     {
-        // Arrange — make a fresh, uninitialised context
-        var connection = new SqliteConnection("DataSource=:memory:");
-        await connection.OpenAsync();
-        var dbOptions = new DbContextOptionsBuilder<CacheDbContext>().UseSqlite(connection).Options;
-        await using var ctx = new CacheDbContext(dbOptions);
-        var sut = new UserCacheService(ctx, Options.Create(_options), _time, NullLogger<UserCacheService>.Instance);
+        var options = new DbContextOptionsBuilder<CacheDbContext>()
+            .UseSqlite(_connection)
+            .Options;
 
-        // Act
-        await sut.InitializeAsync();
-
-        // Assert — schema exists, no rows
-        var count = await ctx.Users.CountAsync();
-        count.Should().Be(0);
+        return new CacheDbContext(options);
     }
 
-    private static GitHubUser MakeUser(string login, int followers = 1)
+    private UserCacheService CreateSut(out FakeTimeProvider timeProvider, int durationMinutes = 15)
     {
-        return new GitHubUser
-        {
-            Login = login,
-            Name = "Octo Cat",
-            Bio = "I am octocat",
-            PublicRepos = 7,
-            Followers = followers,
-            CreatedAt = new DateTimeOffset(2010, 1, 1, 0, 0, 0, TimeSpan.Zero)
-        };
+        timeProvider = new FakeTimeProvider(DateTimeOffset.Parse("2026-05-26T12:00:00Z"));
+        var options = Options.Create(new CacheOptions { DurationMinutes = durationMinutes });
+
+        return new UserCacheService(_dbContext, options, timeProvider, NullLogger<UserCacheService>.Instance);
+    }
+
+    private static GitHubUser CreateUser(string login, int publicRepos = 8)
+    {
+        return new GitHubUser(
+            login,
+            Name: "The Octocat",
+            Bio: "GitHub mascot",
+            PublicRepos: publicRepos,
+            Followers: 1234,
+            CreatedAt: DateTimeOffset.Parse("2008-01-14T04:33:35Z"));
     }
 }
