@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="src/GhInfo/GhInfo.csproj" />
-  <Project Path="tests/GhInfo.Tests/GhInfo.Tests.csproj" />
-</Solution>
